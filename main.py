@@ -38,12 +38,28 @@ def signal():
     global last_limit, last_instant, last_time
     now = time.time()
 
-    # Refresh sinyal setiap 30 menit
     if not last_limit or now - last_time > 1800:
+        # Limit signal
         last_limit = generate_signal()
-        last_instant = generate_signal(direction=last_limit["direction"])
-        last_instant["entry"] = round(last_limit["entry"] + random.uniform(-0.5, 0.5), 3)
-        last_instant["winrate"] = round(last_limit["winrate"] - random.uniform(0.5, 2.0), 1)
+        
+        # Instant signal: entry = simulated real price
+        current_price = round(random.uniform(3190, 3310), 3)
+        dir_factor = 1 if last_limit["direction"] == "BUY" else -1
+
+        entry = current_price
+        tp = round(entry + dir_factor * random.uniform(20, 35), 3)
+        sl = round(entry - dir_factor * random.uniform(8, 12), 3)
+        winrate = round(last_limit["winrate"] - random.uniform(1.0, 3.0), 1)
+
+        last_instant = {
+            "direction": last_limit["direction"],
+            "entry": float(f"{entry:.3f}"),
+            "sl": float(f"{sl:.3f}"),
+            "tp": float(f"{tp:.3f}"),
+            "winrate": winrate,
+            "symbol": "XAUUSD"
+        }
+
         last_time = now
 
     return jsonify({
@@ -53,3 +69,4 @@ def signal():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
