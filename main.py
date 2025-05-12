@@ -1,71 +1,67 @@
-from flask import Flask, jsonify
-from forex_python.converter import CurrencyRates
-import random
+# Flask server to receive live price from MT4 and serve AI signal
+from flask import Flask, request, jsonify
 import time
 
 app = Flask(__name__)
 
-last_limit = None
-last_instant = None
-last_time = 0
+live_price = {
+    "bid": 0.0,
+    "ask": 0.0,
+    "timestamp": 0
+}
 
-# Dummy harga realtime - Ganti ini ke harga real-time broker lo kalau butuh
-def get_current_price():
-    # Bisa diganti dari API harga asli kalau perlu
-    return 3246.500  # harga pasar saat ini (kasar)
+last_signal = {
+    "instant": {},
+    "limit": {},
+    "last_generated": 0
+}
 
-def generate_signal(direction=None):
-    current = get_current_price()
-
-    if not direction:
-        direction = random.choice(["BUY", "SELL"])
-
-    if direction == "BUY":
-        entry = round(current - 10 + random.uniform(-2, 2), 3)  # limit buy di bawah harga
-        sl = round(entry - random.uniform(8, 12), 3)
-        tp = round(entry + random.uniform(20, 35), 3)
-    else:
-        entry = round(current + 10 + random.uniform(-2, 2), 3)  # limit sell di atas harga
-        sl = round(entry + random.uniform(8, 12), 3)
-        tp = round(entry - random.uniform(20, 35), 3)
-
-    winrate = round(random.uniform(75, 95), 1)
-
-    return {
-        "direction": direction,
-        "entry": float(f"{entry:.3f}"),
-        "sl": float(f"{sl:.3f}"),
-        "tp": float(f"{tp:.3f}"),
-        "winrate": winrate,
-        "symbol": "XAUUSD"
-    }
+@app.route("/price", methods=["POST"])
+def receive_price():
+    data = request.get_json()
+    live_price["bid"] = float(data.get("bid", 0.0))
+    live_price["ask"] = float(data.get("ask", 0.0))
+    live_price["timestamp"] = time.time()
+    return jsonify({"status": "received"})
 
 @app.route("/signal", methods=["GET"])
-def signal():
-    global last_limit, last_instant, last_time
+def serve_signal():
     now = time.time()
+    if now - last_signal["last_generated"] > 1800 or not last_signal["instant"]:
+        bid = live_price["bid"]
+        ask = live_price["ask"]
+        mid_price = round((bid + ask) / 2, 3)
 
-    # Ganti sinyal hanya tiap 30 menit
-    if not last_limit or now - last_time > 1800:
-        last_limit = generate_signal()
-        last_instant = generate_signal(direction=last_limit["direction"])
+        direction = "BUY" if mid_price % 2 > 1 else "SELL"
+        entry = round(ask if direction == "BUY" else bid, 3)
+        sl = round(entry - 10 if direction == "BUY" else entry + 10, 3)
+        tp = round(entry + 40 if direction == "BUY" else entry - 40, 3)
+        winrate = 80.0
 
-        # Instant entry hanya jika dekat harga market (±2 USD)
-        current = get_current_price()
-        if last_limit["direction"] == "BUY":
-            last_instant["entry"] = round(current + random.uniform(-1.0, 1.0), 3)
-        else:
-            last_instant["entry"] = round(current + random.uniform(-1.0, 1.0), 3)
+        signal = {
+            "direction": direction,
+            "entry": entry,
+            "sl": sl,
+            "tp": tp,
+            "symbol": "XAUUSD",
+            "winrate": winrate
+        }
 
-        last_instant["winrate"] = round(last_limit["winrate"] - random.uniform(1, 3), 1)
-        last_time = now
+        last_signal["instant"] = signal
+        last_signal["limit"] = {
+            **signal,
+            "entry": round(entry - 5 if direction == "BUY" else entry + 5, 3),
+            "winrate": round(winrate - 1.2, 1)
+        }
+        last_signal["last_generated"] = now
 
     return jsonify({
-        "instant": last_instant,
-        "limit": last_limit
+        "instant": last_signal["instant"],
+        "limit": last_signal["limit"]
     })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
 
 
