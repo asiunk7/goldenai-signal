@@ -1,12 +1,16 @@
 from flask import Flask, jsonify
-import random
+import random, time
 
 app = Flask(__name__)
+
+last_limit = None
+last_instant = None
+last_time = 0
 
 def generate_signal(direction=None):
     if not direction:
         direction = random.choice(["BUY", "SELL"])
-        
+
     base_price = round(random.uniform(3200, 3300), 3)
 
     if direction == "BUY":
@@ -31,17 +35,20 @@ def generate_signal(direction=None):
 
 @app.route("/signal", methods=["GET"])
 def signal():
-    # Buat sinyal utama (limit)
-    limit_signal = generate_signal()
+    global last_limit, last_instant, last_time
+    now = time.time()
 
-    # Instant = versi modifikasi dari sinyal yang sama, entry-nya sedikit lebih dekat ke harga real
-    instant_signal = generate_signal(direction=limit_signal["direction"])
-    instant_signal["entry"] = round(limit_signal["entry"] + random.uniform(-0.5, 0.5), 3)
-    instant_signal["winrate"] = round(limit_signal["winrate"] - random.uniform(0.5, 2.0), 1)
+    # Refresh sinyal setiap 30 menit
+    if not last_limit or now - last_time > 1800:
+        last_limit = generate_signal()
+        last_instant = generate_signal(direction=last_limit["direction"])
+        last_instant["entry"] = round(last_limit["entry"] + random.uniform(-0.5, 0.5), 3)
+        last_instant["winrate"] = round(last_limit["winrate"] - random.uniform(0.5, 2.0), 1)
+        last_time = now
 
     return jsonify({
-        "limit": limit_signal,
-        "instant": instant_signal
+        "limit": last_limit,
+        "instant": last_instant
     })
 
 if __name__ == "__main__":
