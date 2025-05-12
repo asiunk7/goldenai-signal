@@ -21,13 +21,12 @@ def get_signal():
 
     return jsonify({
         "direction": direction,
-        "entry": entry,
-        "sl": sl,
+        "entry": float(f"{entry:.3f}"),
+        "sl": float(f"{sl:.3f}"),
         "symbol": "XAUUSD",
-        "tp": tp,
+        "tp": float(f"{tp:.3f}"),
         "winrate": winrate
     })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
