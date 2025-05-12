@@ -29,7 +29,8 @@ def generate_signal(struct):
         "winrate": winrate
     }
 
-@app.route("/signal", methods=["POST"])
+@app.route("/signal", methods=["GET", "POST"])
+
 def signal():
     global last_signal, last_time
     struct = request.get_json()
