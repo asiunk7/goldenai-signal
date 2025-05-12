@@ -1,56 +1,54 @@
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 import random, time
 
 app = Flask(__name__)
-last_signal = None
+
+last_limit = None
+last_instant = None
 last_time = 0
 
-def generate_signal(struct):
-    direction = "SELL" if struct["candle1"]["close"] < struct["candle1"]["open"] else "BUY"
-    base = struct["candle1"]["close"]
-
+def generate_signal(direction=None):
+    if not direction:
+        direction = random.choice(["BUY", "SELL"])
+    base_price = round(random.uniform(3200, 3300), 3)
     if direction == "BUY":
-        entry = round(base - random.uniform(1.0, 2.5), 3)
-        sl = round(entry - random.uniform(2.0, 4.0), 3)
-        tp = round(entry + random.uniform(3.5, 6.0), 3)
+        entry = base_price
+        sl = round(entry - random.uniform(5, 10), 3)
+        tp = round(entry + random.uniform(20, 40), 3)
     else:
-        entry = round(base + random.uniform(1.0, 2.5), 3)
-        sl = round(entry + random.uniform(2.0, 4.0), 3)
-        tp = round(entry - random.uniform(3.5, 6.0), 3)
-
-    winrate = round(random.uniform(78, 92), 1)
-
+        entry = base_price
+        sl = round(entry + random.uniform(5, 10), 3)
+        tp = round(entry - random.uniform(20, 40), 3)
+    winrate = round(random.uniform(70, 95), 1)
     return {
         "direction": direction,
-        "entry": entry,
-        "sl": sl,
-        "tp": tp,
-        "symbol": "XAUUSD",
-        "winrate": winrate
+        "entry": float(f"{entry:.3f}"),
+        "sl": float(f"{sl:.3f}"),
+        "tp": float(f"{tp:.3f}"),
+        "winrate": winrate,
+        "symbol": "XAUUSD"
     }
 
 @app.route("/signal", methods=["GET", "POST"])
-
 def signal():
-    global last_signal, last_time
-    struct = request.get_json()
+    global last_limit, last_instant, last_time
     now = time.time()
 
-    if last_signal is None or now - last_time > 1800:
-        limit = generate_signal(struct)
-        instant = limit.copy()
-        instant["entry"] = round(limit["entry"] + random.uniform(-0.2, 0.2), 3)
-        instant["winrate"] = round(limit["winrate"] - random.uniform(0.3, 1.0), 1)
+    # Jangan pakai request.get_json() di GET
+    if request.method == "POST":
+        _ = request.get_json(silent=True)
 
-        last_signal = {
-            "limit": limit,
-            "instant": instant
-        }
+    if not last_limit or now - last_time > 1800:
+        last_limit = generate_signal()
+        last_instant = generate_signal(direction=last_limit["direction"])
+        last_instant["entry"] = round(last_limit["entry"] + random.uniform(-0.5, 0.5), 3)
+        last_instant["winrate"] = round(last_limit["winrate"] - random.uniform(0.5, 2.0), 1)
         last_time = now
 
-    return jsonify(last_signal)
+    return jsonify({
+        "limit": last_limit,
+        "instant": last_instant
+    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
-
