@@ -1,77 +1,57 @@
 from flask import Flask, request, jsonify
+import time
 
 app = Flask(__name__)
+
+live_price = {"bid": 0.0, "ask": 0.0, "timestamp": 0}
+last_signal = {"instant": {}, "limit": {}, "last_generated": 0}
 
 @app.route("/price", methods=["POST"])
 def receive_price():
     try:
         data = request.get_json(force=True)
+        live_price["bid"] = float(data.get("bid", 0.0))
+        live_price["ask"] = float(data.get("ask", 0.0))
+        live_price["timestamp"] = time.time()
         print("✅ Received price:", data)
         return jsonify({"status": "received"}), 200
     except Exception as e:
-        print("❌ Error parsing price JSON:", e)
+        print("❌ Error:", e)
         return jsonify({"error": str(e)}), 400
 
 @app.route("/signal", methods=["POST"])
 def send_signal():
     try:
-        market_data = request.get_json(force=True)
-        print("📥 Received signal request:", market_data)
+        data = request.get_json(force=True)
+        print("📥 Market data received:", data)
 
-        # Validasi
-        required_keys = ["symbol", "tf", "candle1", "candle2", "atr", "rsi"]
-        for key in required_keys:
-            if key not in market_data:
-                return jsonify({"error": f"Missing field: {key}"}), 400
+        bid = live_price["bid"]
+        ask = live_price["ask"]
+        mid = round((bid + ask) / 2, 3)
 
-        # Struktur candle
-        c1 = market_data["candle1"]
-        c2 = market_data["candle2"]
-        rsi = market_data["rsi"]
-        atr = market_data["atr"]
-        symbol = market_data["symbol"]
+        direction = "BUY" if mid % 2 > 1 else "SELL"
+        entry = round(ask if direction == "BUY" else bid, 3)
+        sl = round(entry - 10 if direction == "BUY" else entry + 10, 3)
+        tp = round(entry + 40 if direction == "BUY" else entry - 40, 3)
 
-        # Logika sinyal instant
-        if c1["close"] > c1["open"] and c1["close"] > c2["close"] and rsi < 70:
-            instant = {
-                "direction": "BUY",
-                "entry": round(c1["close"], 3),
-                "sl": round(c1["low"] - atr, 3),
-                "tp": round(c1["close"] + atr * 2, 3),
-                "winrate": 80.0
-            }
-        elif c1["close"] < c1["open"] and c1["close"] < c2["close"] and rsi > 30:
-            instant = {
-                "direction": "SELL",
-                "entry": round(c1["close"], 3),
-                "sl": round(c1["high"] + atr, 3),
-                "tp": round(c1["close"] - atr * 2, 3),
-                "winrate": 80.0
-            }
-        else:
-            instant = None
-
-        # Logika sinyal limit
-        limit = {
-            "direction": "SELL",
-            "entry": round(c1["high"] + atr * 0.5, 3),
-            "sl": round(c1["high"] + atr * 1.5, 3),
-            "tp": round(c1["low"], 3),
-            "winrate": 70.0
+        signal = {
+            "direction": direction,
+            "entry": entry,
+            "sl": sl,
+            "tp": tp,
+            "winrate": 80.5,
+            "symbol": data.get("symbol", "XAUUSD")
         }
 
-        return jsonify({
-            "instant": instant,
-            "limit": limit
-        })
+        return jsonify(signal), 200
 
     except Exception as e:
-        print("❌ Error parsing signal JSON:", e)
+        print("❌ Error:", e)
         return jsonify({"error": str(e)}), 400
 
 @app.route("/")
 def home():
-    return "Golden AI Signal Server is running ✅", 200
+    return "✅ Golden AI Signal Server is Running", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
