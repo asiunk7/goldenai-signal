@@ -4,60 +4,42 @@ app = Flask(__name__)
 
 @app.route("/price", methods=["POST"])
 def receive_price():
-    data = request.get_json()
-    print("Received price:", data)
-    return jsonify({"status": "received"}), 200
+    try:
+        data = request.get_json(force=True)
+        print("✅ Received price:", data)
+        return jsonify({"status": "received"}), 200
     except Exception as e:
-        print("❌ Error parsing JSON:", e)
+        print("❌ Error parsing price JSON:", e)
         return jsonify({"error": str(e)}), 400
 
 @app.route("/signal", methods=["POST"])
 def send_signal():
-    data = request.get_json()
-    if not data:
-        return jsonify({}), 400
+    try:
+        market_data = request.get_json(force=True)
+        print("📥 Received signal request:", market_data)
 
-    # Ambil data candle
-    candle1 = data.get("candle1", {})
-    candle2 = data.get("candle2", {})
-    atr = float(data.get("atr", 0))
-    rsi = float(data.get("rsi", 50))
+        # Cek jika data wajib tersedia
+        required_keys = ["symbol", "tf", "candle1", "candle2", "atr", "rsi"]
+        for key in required_keys:
+            if key not in market_data:
+                return jsonify({"error": f"Missing field: {key}"}), 400
 
-    open1 = candle1.get("open", 0)
-    close1 = candle1.get("close", 0)
-    high1 = candle1.get("high", 0)
-    low1 = candle1.get("low", 0)
+        # (Sementara ini dummy logic untuk testing, nanti bisa diganti ke real signal AI)
+        return jsonify({
+            "direction": "BUY",
+            "entry": 3225.123,
+            "sl": 3215.456,
+            "tp": 3240.789,
+            "winrate": 78.9
+        }), 200
 
-    # Validasi candle impuls dan kondisi RSI
-    min_range = 2.0  # candle min 2 point
-    body = abs(close1 - open1)
-    direction = None
+    except Exception as e:
+        print("❌ Error parsing signal JSON:", e)
+        return jsonify({"error": str(e)}), 400
 
-    if body >= min_range:
-        if close1 > open1 and rsi < 70:
-            direction = "BUY"
-        elif close1 < open1 and rsi > 30:
-            direction = "SELL"
-
-    if not direction:
-        return jsonify({})  # no signal
-
-    buffer = atr * 0.5
-    entry = high1 + buffer if direction == "BUY" else low1 - buffer
-    sl = low1 - atr if direction == "BUY" else high1 + atr
-    tp = entry + (entry - sl) * 1.5 if direction == "BUY" else entry - (sl - entry) * 1.5
-
-    # Estimasi winrate dummy (optional)
-    rr = abs(tp - entry) / abs(entry - sl)
-    winrate = min(95, max(60, 60 + (rr - 1.0) * 10))
-
-    return jsonify({
-        "direction": direction,
-        "entry": round(entry, 3),
-        "sl": round(sl, 3),
-        "tp": round(tp, 3),
-        "winrate": round(winrate, 1)
-    }), 200
+@app.route("/")
+def home():
+    return "Golden AI Signal Server is running ✅", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
