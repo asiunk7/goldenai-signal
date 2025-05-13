@@ -15,88 +15,63 @@ def receive_price():
 @app.route("/signal", methods=["POST"])
 def send_signal():
     try:
-        market = request.get_json(force=True)
-        print("📥 Received market data:", market)
+        market_data = request.get_json(force=True)
+        print("📥 Received signal request:", market_data)
 
-        # Ambil candle dan data indikator
-        c1 = market["candle1"]
-        c2 = market["candle2"]
-        rsi = float(market["rsi"])
-        atr = float(market["atr"])
-        symbol = market["symbol"]
-        tf = market["tf"]
+        # Validasi
+        required_keys = ["symbol", "tf", "candle1", "candle2", "atr", "rsi"]
+        for key in required_keys:
+            if key not in market_data:
+                return jsonify({"error": f"Missing field: {key}"}), 400
 
-        bid = float(market.get("bid", 0))
-        ask = float(market.get("ask", 0))
-        spread = abs(ask - bid)
+        # Struktur candle
+        c1 = market_data["candle1"]
+        c2 = market_data["candle2"]
+        rsi = market_data["rsi"]
+        atr = market_data["atr"]
+        symbol = market_data["symbol"]
 
-        # ================================
-        # LOGIC INSTANT SIGNAL
-        # ================================
-        instant_direction = None
-        if c1["close"] > c1["open"] and rsi < 70:  # Bullish + RSI tidak overbought
-            instant_direction = "BUY"
-        elif c1["close"] < c1["open"] and rsi > 30:  # Bearish + RSI tidak oversold
-            instant_direction = "SELL"
-
-        # Atur RR: TP 2x SL
-        sl_buffer = atr * 1.2
-        tp_buffer = atr * 2.4
-
-        if instant_direction == "BUY":
-            instant_entry = ask
-            instant_sl = ask - sl_buffer
-            instant_tp = ask + tp_buffer
-        elif instant_direction == "SELL":
-            instant_entry = bid
-            instant_sl = bid + sl_buffer
-            instant_tp = bid - tp_buffer
-        else:
-            instant_entry = instant_sl = instant_tp = 0
-
-        # ================================
-        # LOGIC LIMIT SIGNAL
-        # ================================
-        limit_direction = instant_direction  # ikut arah instant
-        if limit_direction == "BUY":
-            limit_entry = c1["low"] - spread * 1.5
-            limit_sl = limit_entry - sl_buffer
-            limit_tp = limit_entry + tp_buffer
-        elif limit_direction == "SELL":
-            limit_entry = c1["high"] + spread * 1.5
-            limit_sl = limit_entry + sl_buffer
-            limit_tp = limit_entry - tp_buffer
-        else:
-            limit_entry = limit_sl = limit_tp = 0
-
-        # ================================
-        # Output Response
-        # ================================
-        response = {
-            "instant": {
-                "direction": instant_direction,
-                "entry": round(instant_entry, 3),
-                "sl": round(instant_sl, 3),
-                "tp": round(instant_tp, 3),
-                "winrate": 78.5
-            },
-            "limit": {
-                "direction": limit_direction,
-                "entry": round(limit_entry, 3),
-                "sl": round(limit_sl, 3),
-                "tp": round(limit_tp, 3),
-                "winrate": 82.1
+        # Logika sinyal instant
+        if c1["close"] > c1["open"] and c1["close"] > c2["close"] and rsi < 70:
+            instant = {
+                "direction": "BUY",
+                "entry": round(c1["close"], 3),
+                "sl": round(c1["low"] - atr, 3),
+                "tp": round(c1["close"] + atr * 2, 3),
+                "winrate": 80.0
             }
+        elif c1["close"] < c1["open"] and c1["close"] < c2["close"] and rsi > 30:
+            instant = {
+                "direction": "SELL",
+                "entry": round(c1["close"], 3),
+                "sl": round(c1["high"] + atr, 3),
+                "tp": round(c1["close"] - atr * 2, 3),
+                "winrate": 80.0
+            }
+        else:
+            instant = None
+
+        # Logika sinyal limit
+        limit = {
+            "direction": "SELL",
+            "entry": round(c1["high"] + atr * 0.5, 3),
+            "sl": round(c1["high"] + atr * 1.5, 3),
+            "tp": round(c1["low"], 3),
+            "winrate": 70.0
         }
-        return jsonify(response), 200
+
+        return jsonify({
+            "instant": instant,
+            "limit": limit
+        })
 
     except Exception as e:
-        print("❌ Error in /signal logic:", e)
+        print("❌ Error parsing signal JSON:", e)
         return jsonify({"error": str(e)}), 400
 
 @app.route("/")
 def home():
-    return "Golden AI Smart Signal Server ✅", 200
+    return "Golden AI Signal Server is running ✅", 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
