@@ -7,6 +7,9 @@ def receive_price():
     data = request.get_json()
     print("Received price:", data)
     return jsonify({"status": "received"}), 200
+    except Exception as e:
+        print("❌ Error parsing JSON:", e)
+        return jsonify({"error": str(e)}), 400
 
 @app.route("/signal", methods=["POST"])
 def send_signal():
