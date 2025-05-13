@@ -10,15 +10,13 @@ def receive_price():
 
 @app.route("/signal", methods=["POST"])
 def send_signal():
-    # Gunakan data struktur market dari MT4
     market_data = request.get_json()
     print("Received signal request:", market_data)
 
-    # Kirim dummy sinyal contoh
     return jsonify({
         "direction": "BUY",
         "entry": 3225.123,
         "sl": 3215.456,
         "tp": 3240.789,
         "winrate": 78.9
-    })
+    }), 200
