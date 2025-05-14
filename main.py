@@ -1,11 +1,12 @@
 import os
 import json
+import re
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import openai
 
-# Load API key
+# Load .env
 load_dotenv()
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
@@ -41,8 +42,9 @@ def send_signal():
         answer = response.choices[0].message.content
         print("🧠 GPT Response:\n", answer)
 
-        # Coba parse ke JSON
-        return jsonify(json.loads(answer))
+        # Bersihkan markdown block seperti ```json ... ```
+        clean = re.sub(r"^```json|```$", "", answer.strip(), flags=re.MULTILINE).strip()
+        return jsonify(json.loads(clean))
 
     except Exception as e:
         print("❌ ERROR PARSING GPT RESPONSE:", e)
@@ -59,7 +61,7 @@ def build_prompt(data):
     expired_str = expired.strftime('%Y-%m-%d %H:%M:%S')
 
     prompt = f"""
-Candle data (M30):
+Candle data (Timeframe M30):
 
 Candle 1 (latest pullback):
 Open: {data['candle1']['open']}, High: {data['candle1']['high']}, Low: {data['candle1']['low']}, Close: {data['candle1']['close']}
