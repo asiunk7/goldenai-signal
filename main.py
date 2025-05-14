@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import openai
 
-# Load API key dari .env
+# Load API key
 load_dotenv()
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
@@ -39,19 +39,27 @@ def send_signal():
             temperature=0.3
         )
         answer = response.choices[0].message.content
-        return jsonify(json.loads(answer))  # ✅ safer than eval
+        print("🧠 GPT Response:\n", answer)
+
+        # Coba parse ke JSON
+        return jsonify(json.loads(answer))
+
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print("❌ ERROR PARSING GPT RESPONSE:", e)
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "raw": answer if 'answer' in locals() else None
+        }), 500
 
 def build_prompt(data):
-    # Hitung expired otomatis ke akhir candle M30
     now = datetime.utcnow()
     next_half = 30 if now.minute < 30 else 60
     expired = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=next_half)
     expired_str = expired.strftime('%Y-%m-%d %H:%M:%S')
 
     prompt = f"""
-Candle data (Timeframe M30):
+Candle data (M30):
 
 Candle 1 (latest pullback):
 Open: {data['candle1']['open']}, High: {data['candle1']['high']}, Low: {data['candle1']['low']}, Close: {data['candle1']['close']}
@@ -65,25 +73,31 @@ Open: {data['candle3']['open']}, High: {data['candle3']['high']}, Low: {data['ca
 ATR: {data.get('atr', 'N/A')}
 RSI: {data.get('rsi', 'N/A')}
 
-Please analyze the market structure above and suggest only 1 optimal trade.
+Please analyze the structure and suggest:
+- direction (BUY or SELL)
+- entry
+- stop loss (SL)
+- take profit (TP)
+- winrate estimation (in percent)
+- expired (UTC): {expired_str}
 
-Respond ONLY in JSON format like below:
+Respond ONLY in valid JSON format like this:
 {{
   "status": "success",
   "instant": {{
-    "direction": "BUY or SELL",
-    "entry": price (float),
-    "sl": stop_loss (float),
-    "tp": take_profit (float),
-    "winrate": confidence_percent (float),
+    "direction": "...",
+    "entry": ...,
+    "sl": ...,
+    "tp": ...,
+    "winrate": ...,
     "expired": "{expired_str}"
   }},
   "limit": {{
-    "direction": same_as_above,
-    "entry": same_entry_price,
-    "sl": same_sl,
-    "tp": same_tp,
-    "winrate": same_winrate,
+    "direction": "...",
+    "entry": ...,
+    "sl": ...,
+    "tp": ...,
+    "winrate": ...,
     "expired": "{expired_str}"
   }}
 }}
