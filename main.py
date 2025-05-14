@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 app = Flask(__name__)
@@ -26,9 +26,9 @@ def send_signal():
         return jsonify({"status": "error", "message": "no price data"}), 400
 
     prompt = build_prompt(latest_data)
-    
+
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model=MODEL,
             messages=[
                 {"role": "system", "content": "You are a professional forex analyst. Given candle data, suggest best trade (BUY/SELL), entry, SL, TP, and winrate. Respond in JSON."},
@@ -36,8 +36,8 @@ def send_signal():
             ],
             temperature=0.3
         )
-        answer = response['choices'][0]['message']['content']
-        return jsonify(eval(answer))  # ⚠️ Bisa diganti safer json.loads(answer) kalau kamu yakin response valid JSON
+        answer = response.choices[0].message.content
+        return jsonify(eval(answer))  # ⚠️ bisa diganti json.loads(answer)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
