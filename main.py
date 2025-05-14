@@ -1,86 +1,43 @@
 from flask import Flask, request, jsonify
-from waitress import serve
-import os
-import time
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# Menyimpan harga dari MT4
-live_price = {
-    "bid": 0.0,
-    "ask": 0.0,
-    "timestamp": 0
-}
-
-# Menyimpan sinyal terakhir agar tidak berubah-ubah tiap request
-last_signal = {
-    "instant": {},
-    "limit": {},
-    "last_generated": 0
-}
-
-@app.route("/price", methods=["POST"])
+@app.route('/price', methods=['POST'])
 def receive_price():
-    try:
-        data = request.get_json(force=True)
-        live_price["bid"] = float(data.get("bid", 0.0))
-        live_price["ask"] = float(data.get("ask", 0.0))
-        live_price["timestamp"] = time.time()
-        print("✅ Received price:", live_price)
-        return jsonify({"status": "received"}), 200
-    except Exception as e:
-        print("❌ Error in /price:", e)
-        return jsonify({"error": str(e)}), 400
+    data = request.get_json(force=True)
+    print("Received price data:", data)
+    return jsonify({"status": "received"})
 
-@app.route("/signal", methods=["POST"])
+@app.route('/signal', methods=['GET'])
 def send_signal():
-    try:
-        data = request.get_json(force=True)
-        print("📥 Received signal request:", data)
+    now = datetime.utcnow()
+    # Atur expired ke akhir candle M30 saat ini
+    minute = now.minute
+    next_half_hour = 30 if minute < 30 else 60
+    expired_time = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=next_half_hour)
 
-        now = time.time()
-        timeout = 1800  # 30 menit
+    # Contoh sinyal realistis (SELL)
+    signal = {
+        "status": "success",
+        "instant": {
+            "direction": "SELL",
+            "entry": 3195.170,
+            "sl": 3204.900,
+            "tp": 3181.370,
+            "winrate": 78.3,
+            "expired": expired_time.strftime('%Y-%m-%d %H:%M:%S')
+        },
+        "limit": {
+            "direction": "SELL",
+            "entry": 3195.170,
+            "sl": 3204.900,
+            "tp": 3181.370,
+            "winrate": 78.3,
+            "expired": expired_time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    }
+    return jsonify(signal)
 
-        if (now - last_signal["last_generated"] > timeout) or not last_signal["instant"]:
-            direction = "BUY" if (live_price["ask"] + live_price["bid"]) % 2 > 1 else "SELL"
-            entry_instant = round(live_price["ask"] if direction == "BUY" else live_price["bid"], 3)
-            tp = round(entry_instant + 30 if direction == "BUY" else entry_instant - 30, 3)
-            sl = round(entry_instant - 10 if direction == "BUY" else entry_instant + 10, 3)
-
-            instant_signal = {
-                "direction": direction,
-                "entry": entry_instant,
-                "sl": sl,
-                "tp": tp,
-                "winrate": 81.7,
-                "symbol": data.get("symbol", "XAUUSD")
-            }
-
-            # Limit order sedikit lebih baik dari instant
-            entry_limit = round(entry_instant - 2 if direction == "BUY" else entry_instant + 2, 3)
-            limit_signal = {
-                **instant_signal,
-                "entry": entry_limit,
-                "winrate": round(instant_signal["winrate"] + 1.1, 1)
-            }
-
-            last_signal["instant"] = instant_signal
-            last_signal["limit"] = limit_signal
-            last_signal["last_generated"] = now
-
-        return jsonify({
-            "instant": last_signal["instant"],
-            "limit": last_signal["limit"]
-        }), 200
-
-    except Exception as e:
-        print("❌ Error in /signal:", e)
-        return jsonify({"error": str(e)}), 400
-
-@app.route("/")
-def home():
-    return "Golden AI Signal Server is running ✅", 200
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    serve(app, host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    app.run(debug=True, port=10000)
