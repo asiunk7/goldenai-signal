@@ -1,9 +1,11 @@
 import os
-import openai
+import json
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+import openai
 
+# Load API key dari .env
 load_dotenv()
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
@@ -31,24 +33,30 @@ def send_signal():
         response = client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": "You are a professional forex analyst. Given candle data, suggest best trade (BUY/SELL), entry, SL, TP, and winrate. Respond in JSON."},
+                {"role": "system", "content": "You are a professional forex analyst. Given candle data, suggest best trade (BUY/SELL), entry, SL, TP, and winrate. Respond in JSON only."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3
         )
         answer = response.choices[0].message.content
-        return jsonify(eval(answer))  # ⚠️ bisa diganti json.loads(answer)
+        return jsonify(json.loads(answer))  # ✅ safer than eval
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 def build_prompt(data):
+    # Hitung expired otomatis ke akhir candle M30
+    now = datetime.utcnow()
+    next_half = 30 if now.minute < 30 else 60
+    expired = now.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=next_half)
+    expired_str = expired.strftime('%Y-%m-%d %H:%M:%S')
+
     prompt = f"""
-Candle data (M30):
+Candle data (Timeframe M30):
 
 Candle 1 (latest pullback):
 Open: {data['candle1']['open']}, High: {data['candle1']['high']}, Low: {data['candle1']['low']}, Close: {data['candle1']['close']}
 
-Candle 2 (impulse):
+Candle 2 (impulse candle):
 Open: {data['candle2']['open']}, High: {data['candle2']['high']}, Low: {data['candle2']['low']}, Close: {data['candle2']['close']}
 
 Candle 3 (structure/swing):
@@ -57,32 +65,26 @@ Open: {data['candle3']['open']}, High: {data['candle3']['high']}, Low: {data['ca
 ATR: {data.get('atr', 'N/A')}
 RSI: {data.get('rsi', 'N/A')}
 
-Now suggest:
-- direction (BUY or SELL)
-- entry price
-- stop loss (SL)
-- take profit (TP)
-- winrate estimation (in percent)
-- expired (set to end of current M30 candle in UTC)
+Please analyze the market structure above and suggest only 1 optimal trade.
 
-Respond ONLY in JSON format, like this:
+Respond ONLY in JSON format like below:
 {{
   "status": "success",
   "instant": {{
-    "direction": "...",
-    "entry": ...,
-    "sl": ...,
-    "tp": ...,
-    "winrate": ...,
-    "expired": "YYYY-MM-DD HH:MM:SS"
+    "direction": "BUY or SELL",
+    "entry": price (float),
+    "sl": stop_loss (float),
+    "tp": take_profit (float),
+    "winrate": confidence_percent (float),
+    "expired": "{expired_str}"
   }},
   "limit": {{
-    "direction": "...",
-    "entry": ...,
-    "sl": ...,
-    "tp": ...,
-    "winrate": ...,
-    "expired": "YYYY-MM-DD HH:MM:SS"
+    "direction": same_as_above,
+    "entry": same_entry_price,
+    "sl": same_sl,
+    "tp": same_tp,
+    "winrate": same_winrate,
+    "expired": "{expired_str}"
   }}
 }}
 """
