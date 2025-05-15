@@ -6,7 +6,7 @@ import os
 app = Flask(__name__)
 latest_data = {}
 
-# Inisialisasi client OpenAI (versi terbaru)
+# Inisialisasi client OpenAI versi >= 1.0.0
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.route('/price', methods=['POST'])
@@ -21,7 +21,7 @@ def signal():
     if not latest_data:
         return jsonify({"status": "error", "message": "no price data"})
 
-    # Buat prompt ke GPT
+    # Buat prompt yang akan dikirim ke GPT
     prompt = (
         "Kamu adalah AI expert trading. Berdasarkan data berikut, buat sinyal terbaik "
         "(BUY/SELL LIMIT/INSTANT), entry, SL, TP, dan winrate secara masuk akal.\n\n"
