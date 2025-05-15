@@ -1,8 +1,5 @@
 from flask import Flask, request, jsonify
 from datetime import datetime, timedelta
-import json
-import os
-from push_to_github import push_signal_to_github
 
 app = Flask(__name__)
 latest_data = {}
@@ -10,41 +7,83 @@ latest_data = {}
 @app.route('/price', methods=['POST'])
 def price():
     global latest_data
-    latest_data = request.get_json(force=True)
-    return jsonify({"status": "received"})
+    try:
+        latest_data = request.get_json(force=True)
+        print("[RECEIVED] /price @", datetime.utcnow(), "->", latest_data)
+        return jsonify({"status": "received", "data": latest_data})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 
 @app.route('/signal', methods=['GET'])
 def signal():
-    if not latest_data:
-        return jsonify({"status": "error", "message": "no price data"})
+    if not latest_data or "candle1" not in latest_data:
+        return jsonify({"status": "error", "message": "no valid price data"})
+
+    # --- Ambil data struktur candle ---
+    symbol = latest_data.get("symbol", "XAUUSD")
+    tf = latest_data.get("tf", "M30")
+    c1 = latest_data.get("candle1", {})
+    c2 = latest_data.get("candle2", {})
+    c3 = latest_data.get("candle3", {})
+    atr = float(latest_data.get("atr", 100.0))
+    rsi = float(latest_data.get("rsi", 50.0))
+
+    # --- Struktur candle analisa sederhana (masih simple bisa diimprove) ---
+    is_bearish = c1.get("close", 0) < c1.get("open", 0)
+    is_bullish = c1.get("close", 0) > c1.get("open", 0)
 
     now = datetime.utcnow()
     expired = (now.replace(second=0, microsecond=0) + timedelta(minutes=30)).strftime('%Y-%m-%d %H:%M:%S')
 
-    signal_data = {
-        "instant": {
-            "direction": "SELL",
-            "entry": 3210,
-            "sl": 3235,
-            "tp": 3180,
-            "winrate": 60
-        },
-        "limit": {
-            "direction": "BUY",
-            "entry": 3190,
-            "sl": 3165,
-            "tp": 3225,
-            "winrate": 70
-        },
-        "status": "success",
-        "expired": expired
-    }
+    # --- Logika sinyal simple berbasis arah candle dan RSI ---
+    if is_bearish and rsi > 65:
+        signal = {
+            "status": "success",
+            "instant": {
+                "direction": "SELL",
+                "entry": c1["close"],
+                "sl": round(c1["high"] + atr, 2),
+                "tp": round(c1["close"] - (2 * atr), 2),
+                "winrate": 68.5,
+                "expired": expired
+            },
+            "limit": {
+                "direction": "SELL",
+                "entry": round(c1["close"] + (0.5 * atr), 2),
+                "sl": round(c1["high"] + atr, 2),
+                "tp": round(c1["close"] - (2 * atr), 2),
+                "winrate": 71.0,
+                "expired": expired
+            }
+        }
+    elif is_bullish and rsi < 35:
+        signal = {
+            "status": "success",
+            "instant": {
+                "direction": "BUY",
+                "entry": c1["close"],
+                "sl": round(c1["low"] - atr, 2),
+                "tp": round(c1["close"] + (2 * atr), 2),
+                "winrate": 67.0,
+                "expired": expired
+            },
+            "limit": {
+                "direction": "BUY",
+                "entry": round(c1["close"] - (0.5 * atr), 2),
+                "sl": round(c1["low"] - atr, 2),
+                "tp": round(c1["close"] + (2 * atr), 2),
+                "winrate": 70.5,
+                "expired": expired
+            }
+        }
+    else:
+        signal = {
+            "status": "error",
+            "message": "struktur tidak valid (no signal)"
+        }
 
-    with open("signal.json", "w") as f:
-        json.dump(signal_data, f, indent=2)
-
-    push_signal_to_github("signal.json")
-    return jsonify(signal_data)
+    print("[RESPONSE] /signal ->", signal)
+    return jsonify(signal)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
